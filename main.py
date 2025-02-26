@@ -11,6 +11,7 @@ from telegram.ext import (
     filters,
     ContextTypes,
     ConversationHandler,
+    ChatMemberHandler,
 )
 
 from config import (
@@ -221,6 +222,7 @@ class NewsBot:
         # Получаем все источники
         rss_sources = self.db.get_sources(source_type='rss')
         binance_sources = self.db.get_sources(source_type='binance')
+        telegram_sources = self.db.get_sources(source_type='telegram')
 
         message = "📋 <b>Список источников новостей:</b>\n\n"
         
@@ -236,11 +238,86 @@ class NewsBot:
                 last_fetch = src['last_fetch'].strftime('%d.%m.%Y %H:%M') if src['last_fetch'] else 'Никогда'
                 message += f"• {src['name']} (ID: {src['id']})\n  └ Последняя проверка: {last_fetch}\n\n"
 
+        if telegram_sources:
+            message += "\n💬 <b>Telegram группы:</b>\n"
+            for src in telegram_sources:
+                last_fetch = src['last_fetch'].strftime('%d.%m.%Y %H:%M') if src['last_fetch'] else 'Никогда'
+                message += f"• {src['name']} (ID: {src['id']})\n  └ Последняя проверка: {last_fetch}\n\n"
+
         message += "\nДля управления источниками используйте команды:\n"
         message += "/add_source - Добавить источник\n"
         message += "/remove_source - Удалить источник"
 
         await update.message.reply_text(message, parse_mode='HTML')
+
+    async def handle_group_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Обрабатывает сообщения в группах."""
+        if not update.effective_chat or not update.effective_message:
+            return
+
+        chat = update.effective_chat
+        message = update.effective_message
+
+        # Проверяем, является ли чат группой или супергруппой
+        if chat.type not in ['group', 'supergroup']:
+            return
+
+        # Добавляем группу как источник, если её ещё нет
+        chat_id = str(chat.id)
+        if not any(src['url'] == chat_id for src in self.db.get_sources(source_type='telegram')):
+            self.db.add_source(
+                url=chat_id,
+                name=chat.title or "Telegram группа",
+                source_type='telegram'
+            )
+            await message.reply_text(
+                f"✅ Группа '{chat.title}' добавлена как источник новостей!"
+            )
+
+        # Обновляем время последней проверки
+        sources = self.db.get_sources(source_type='telegram')
+        for source in sources:
+            if source['url'] == chat_id:
+                self.db.update_source_last_fetch(source['id'])
+                break
+
+    async def handle_my_chat_member(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Обрабатывает изменения статуса бота в чате."""
+        if not update.my_chat_member or not update.my_chat_member.chat:
+            return
+
+        chat = update.my_chat_member.chat
+        new_status = update.my_chat_member.new_chat_member.status
+        old_status = update.my_chat_member.old_chat_member.status
+
+        # Если бота добавили в группу
+        if (chat.type in ['group', 'supergroup'] and 
+            old_status in ['left', 'kicked'] and 
+            new_status in ['member', 'administrator']):
+            
+            chat_id = str(chat.id)
+            if not any(src['url'] == chat_id for src in self.db.get_sources(source_type='telegram')):
+                self.db.add_source(
+                    url=chat_id,
+                    name=chat.title or "Telegram группа",
+                    source_type='telegram'
+                )
+                await context.bot.send_message(
+                    chat_id=chat.id,
+                    text=f"👋 Привет! Я буду отслеживать сообщения в этой группе.\n"
+                         f"✅ Группа '{chat.title}' добавлена как источник новостей!"
+                )
+
+        # Если бота удалили из группы
+        elif (chat.type in ['group', 'supergroup'] and 
+              old_status in ['member', 'administrator'] and 
+              new_status in ['left', 'kicked']):
+            
+            sources = self.db.get_sources(source_type='telegram')
+            for source in sources:
+                if source['url'] == str(chat.id):
+                    self.db.remove_source(source['id'])
+                    break
 
     async def add_source_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Начинает процесс добавления источника."""
@@ -250,7 +327,8 @@ class NewsBot:
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text(
-            "Выберите тип источника:",
+            "Выберите тип источника:\n\n"
+            "Примечание: Telegram группы добавляются автоматически при добавлении бота в группу",
             reply_markup=reply_markup
         )
         return ADDING_SOURCE
@@ -557,11 +635,23 @@ def main():
     application.add_handler(CommandHandler("add_source", bot.add_source_command))
     application.add_handler(CommandHandler("remove_source", bot.remove_source_command))
     
+    # Добавляем обработчик сообщений в группах
+    application.add_handler(MessageHandler(
+        filters.ChatType.GROUPS & ~filters.COMMAND,
+        bot.handle_group_message
+    ))
+    
+    # Добавляем обработчик изменений статуса бота в чате
+    application.add_handler(ChatMemberHandler(
+        bot.handle_my_chat_member,
+        ChatMemberHandler.MY_CHAT_MEMBER
+    ))
+    
     # Добавляем задачу проверки новостей
     application.job_queue.run_repeating(bot.check_news, interval=300, first=10)
     
     # Запускаем бота
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    application.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 if __name__ == "__main__":
     main() 
