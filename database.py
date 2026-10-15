@@ -3,7 +3,10 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.sql import func
 from typing import List, Optional, Dict
+import logging
 from config import DATABASE_URL
+
+logger = logging.getLogger(__name__)
 
 Base = declarative_base()
 
