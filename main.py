@@ -31,6 +31,9 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+# httpx на уровне INFO пишет URL запросов к Bot API, а в URL есть токен бота
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 def main_keyboard() -> ReplyKeyboardMarkup:
