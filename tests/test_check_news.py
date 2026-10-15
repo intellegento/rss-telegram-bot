@@ -81,3 +81,32 @@ def test_failed_send_does_not_mark_news_as_seen(bot):
     run_cycle(bot, context, news)
     assert context.bot.send_message.await_count == 2
     assert bot.db.is_news_seen(USER_ID, "hash-0")
+
+
+def html_tags(text):
+    from html.parser import HTMLParser
+
+    tags = []
+
+    class Collector(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            tags.append(tag)
+
+    Collector().feed(text)
+    return tags
+
+
+def test_title_with_html_special_chars_is_escaped(bot):
+    news = make_news(1, title="bitcoin <b>2 > 1</b> & <script>")
+    news[0]["description"] = "a < b & c > d"
+    context = make_context()
+
+    run_cycle(bot, context, news)
+
+    assert context.bot.send_message.await_count == 1
+    [text] = sent_texts(context)
+    # Остаются только теги, которые добавляет сам бот
+    assert html_tags(text) == ["b", "a"]
+    assert "bitcoin &lt;b&gt;2 &gt; 1&lt;/b&gt; &amp; &lt;script&gt;" in text
+    assert "a &lt; b &amp; c &gt; d" in text
+    assert bot.db.is_news_seen(USER_ID, "hash-0")

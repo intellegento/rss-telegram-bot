@@ -1,3 +1,4 @@
+import html
 import re
 from typing import List, Dict
 from datetime import datetime
@@ -5,9 +6,9 @@ import pytz
 
 def format_message(news_item: Dict) -> str:
     """Форматирует новость для отправки в Telegram."""
-    title = news_item['title']
+    title = html.escape(news_item['title'])
     link = news_item['link']
-    description = news_item['description']
+    description = html.escape(news_item['description'])
     source = news_item.get('source', 'rss')
     
     # Форматируем дату в московское время
