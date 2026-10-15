@@ -1,7 +1,7 @@
 import aiohttp
 import hashlib
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 
 class BinanceHandler:
@@ -48,7 +48,7 @@ class BinanceHandler:
                                 title = item.get("title", "")
                                 code = item.get("code", "")
                                 description = item.get("description", "")
-                                published = datetime.fromtimestamp(item.get("releaseDate", 0) / 1000)
+                                published = datetime.fromtimestamp(item.get("releaseDate", 0) / 1000, tz=timezone.utc)
                                 
                                 news_hash = self.generate_news_hash(title, code)
                                 

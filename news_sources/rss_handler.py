@@ -1,7 +1,7 @@
 import feedparser
 import hashlib
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import aiohttp
 import asyncio
 from bs4 import BeautifulSoup
@@ -53,9 +53,9 @@ class RSSHandler:
                 # Получаем дату публикации
                 published = entry.get('published_parsed', None)
                 if published:
-                    published_date = datetime(*published[:6])
+                    published_date = datetime(*published[:6], tzinfo=timezone.utc)
                 else:
-                    published_date = datetime.now()
+                    published_date = datetime.now(timezone.utc)
 
                 news_hash = self.generate_news_hash(title, link)
                 
