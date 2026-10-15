@@ -31,4 +31,6 @@ HTTP_TIMEOUT = 15
 MAX_KEYWORDS_PER_USER = 10
 
 # База данных
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///bot_data.db") 
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise SystemExit("Ошибка: переменная окружения DATABASE_URL не задана. Укажите её в .env (см. .env.example).") 
