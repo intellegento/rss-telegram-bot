@@ -27,8 +27,15 @@ MAX_UPDATE_INTERVAL = 3600  # Максимальный интервал
 # Таймаут HTTP-запросов к источникам (в секундах)
 HTTP_TIMEOUT = 15
 
-# Максимальное количество ключевых слов на пользователя
-MAX_KEYWORDS_PER_USER = 10
+# Лимиты бесплатной версии; для премиума ограничений нет
+FREE_KEYWORDS_LIMIT = 5
+FREE_SOURCES_LIMIT = 2
+
+# Сколько новостей отправлять пользователю за один запуск
+MAX_DELIVERIES_PER_RUN = 10
+
+# Посты старше этого срока удаляются вместе с их доставками
+POSTS_RETENTION_DAYS = 14
 
 # База данных
 DATABASE_URL = os.getenv("DATABASE_URL")

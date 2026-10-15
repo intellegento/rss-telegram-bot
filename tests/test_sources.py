@@ -1,25 +1,19 @@
 import asyncio
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
+from unittest.mock import patch
 
-from news_sources.binance_handler import BinanceHandler
-from news_sources.rss_handler import RSSHandler
+from config import HTTP_TIMEOUT
+from news_sources import binance_handler, rss_handler
 
 FEED = """<?xml version="1.0"?>
 <rss version="2.0"><channel><title>t</title>
-<item><title>dated</title><link>https://a.example/1</link>
+<item><title>dated</title><link>https://a.example/1</link><guid>id-1</guid>
+<description>&lt;p&gt;some &lt;b&gt;text&lt;/b&gt;&lt;/p&gt;</description>
 <pubDate>Wed, 01 Jan 2025 12:00:00 GMT</pubDate></item>
 <item><title>undated</title><link>https://a.example/2</link></item>
 </channel></rss>"""
 
-
-def test_rss_dates_are_utc_aware():
-    items = asyncio.run(RSSHandler().parse_feed(FEED))
-    dated, undated = items
-
-    assert dated["published"] == datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
-    assert dated["published"].utcoffset().total_seconds() == 0
-    assert undated["published"].tzinfo is not None
+RECORD_KEYS = {"guid", "title", "url", "summary", "published_at"}
 
 
 class FakeResponse:
@@ -28,7 +22,13 @@ class FakeResponse:
     def __init__(self, payload):
         self.payload = payload
 
+    def raise_for_status(self):
+        pass
+
     async def json(self):
+        return self.payload
+
+    async def text(self):
         return self.payload
 
     async def __aenter__(self):
@@ -38,34 +38,60 @@ class FakeResponse:
         return False
 
 
-def test_binance_dates_are_utc_aware_and_sortable_with_rss():
+class FakeSession:
+    """Подменяет aiohttp.ClientSession и запоминает таймаут."""
+
+    timeouts = []
+
+    def __init__(self, payload, timeout=None):
+        self.payload = payload
+        FakeSession.timeouts.append(timeout.total)
+
+    def get(self, url, **kwargs):
+        return FakeResponse(self.payload)
+
+    post = get
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+
+def fetch(module, payload):
+    FakeSession.timeouts = []
+    with patch.object(module.aiohttp, "ClientSession", lambda **kw: FakeSession(payload, **kw)):
+        return asyncio.run(module.fetch("https://a.example/rss"))
+
+
+def test_rss_records_are_normalized():
+    dated, undated = fetch(rss_handler, FEED)
+
+    assert set(dated) == RECORD_KEYS
+    assert dated["guid"] == "id-1"
+    assert dated["title"] == "dated"
+    assert dated["url"] == "https://a.example/1"
+    assert dated["summary"] == "some text"
+    assert dated["published_at"] == datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
+    # Без guid в ленте идентификатором служит ссылка, без даты — None
+    assert undated["guid"] == "https://a.example/2"
+    assert undated["published_at"] is None
+    assert FakeSession.timeouts == [HTTP_TIMEOUT]
+
+
+def test_binance_records_are_normalized():
     payload = {"code": "000000", "data": {"catalogs": [
-        {"title": "b", "code": "c1", "description": "", "releaseDate": 1735732800000},
+        {"title": "b", "code": "c1", "description": "d", "releaseDate": 1735732800000},
     ]}}
-    handler = BinanceHandler()
-    handler.session = MagicMock()
-    handler.session.post = MagicMock(return_value=FakeResponse(payload))
 
-    [item] = asyncio.run(handler.get_announcements())
+    [item] = fetch(binance_handler, payload)
 
-    assert item["published"] == datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
-    rss_items = asyncio.run(RSSHandler().parse_feed(FEED))
-    sorted(rss_items + [item], key=lambda x: x["published"])
-
-
-def session_timeout(handler):
-    async def run():
-        await handler.init_session()
-        timeout = handler.session.timeout.total
-        await handler.close_session()
-        return timeout
-
-    return asyncio.run(run())
-
-
-def test_http_sessions_have_timeout():
-    from config import HTTP_TIMEOUT
-
-    assert HTTP_TIMEOUT > 0
-    assert session_timeout(RSSHandler()) == HTTP_TIMEOUT
-    assert session_timeout(BinanceHandler()) == HTTP_TIMEOUT
+    assert item == {
+        "guid": "c1",
+        "title": "b",
+        "url": "https://www.binance.com/en/support/announcement/c1",
+        "summary": "d",
+        "published_at": datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc),
+    }
+    assert FakeSession.timeouts == [HTTP_TIMEOUT]

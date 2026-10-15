@@ -9,6 +9,7 @@ import pytest
     "utils",
     "news_sources.rss_handler",
     "news_sources.binance_handler",
+    "pipeline",
     "main",
 ])
 def test_module_imports(module):

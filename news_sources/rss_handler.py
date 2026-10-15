@@ -1,101 +1,42 @@
 import feedparser
-import hashlib
-from typing import List, Dict, Optional
+from typing import List, Dict
 from datetime import datetime, timezone
 import aiohttp
 from bs4 import BeautifulSoup
 
 from config import HTTP_TIMEOUT
 
-class RSSHandler:
-    def __init__(self):
-        self.session = None
 
-    async def init_session(self):
-        if not self.session:
-            self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=HTTP_TIMEOUT))
+def parse_feed(content: str) -> List[Dict]:
+    """Парсит содержимое RSS-канала в записи (guid, title, url, summary, published_at)."""
+    feed = feedparser.parse(content)
+    news_items = []
 
-    async def close_session(self):
-        if self.session:
-            await self.session.close()
-            self.session = None
+    for entry in feed.entries:
+        title = entry.get('title', '')
+        link = entry.get('link', '')
 
-    def generate_news_hash(self, title: str, link: str) -> str:
-        """Генерирует уникальный хеш для новости."""
-        return hashlib.md5(f"{title}{link}".encode()).hexdigest()
+        # Очищаем описание от HTML-тегов
+        soup = BeautifulSoup(entry.get('description', ''), 'html.parser')
+        clean_description = soup.get_text()
 
-    async def fetch_rss(self, url: str) -> Optional[str]:
-        """Асинхронно получает содержимое RSS-канала."""
-        try:
-            await self.init_session()
-            async with self.session.get(url) as response:
-                if response.status == 200:
-                    return await response.text()
-                return None
-        except Exception as e:
-            print(f"Ошибка при получении RSS с {url}: {e}")
-            return None
+        # Получаем дату публикации
+        published = entry.get('published_parsed', None)
 
-    async def parse_feed(self, content: str) -> List[Dict]:
-        """Парсит содержимое RSS-канала."""
-        feed = feedparser.parse(content)
-        news_items = []
+        news_items.append({
+            'guid': entry.get('id') or link or title,
+            'title': title,
+            'url': link,
+            'summary': clean_description[:200] + '...' if len(clean_description) > 200 else clean_description,
+            'published_at': datetime(*published[:6], tzinfo=timezone.utc) if published else None,
+        })
 
-        for entry in feed.entries:
-            try:
-                title = entry.get('title', '')
-                link = entry.get('link', '')
-                description = entry.get('description', '')
-                
-                # Очищаем описание от HTML-тегов
-                soup = BeautifulSoup(description, 'html.parser')
-                clean_description = soup.get_text()
+    return news_items
 
-                # Получаем дату публикации
-                published = entry.get('published_parsed', None)
-                if published:
-                    published_date = datetime(*published[:6], tzinfo=timezone.utc)
-                else:
-                    published_date = datetime.now(timezone.utc)
 
-                news_hash = self.generate_news_hash(title, link)
-                
-                news_items.append({
-                    'title': title,
-                    'link': link,
-                    'description': clean_description[:200] + '...' if len(clean_description) > 200 else clean_description,
-                    'published': published_date,
-                    'hash': news_hash
-                })
-            except Exception as e:
-                print(f"Ошибка при обработке новости: {e}")
-                continue
-
-        return news_items
-
-    async def get_news(self, urls: List[str]) -> List[Dict]:
-        """Получает новости из списка RSS-каналов."""
-        all_news = []
-        
-        for url in urls:
-            content = await self.fetch_rss(url)
-            if content:
-                news_items = await self.parse_feed(content)
-                all_news.extend(news_items)
-
-        # Сортируем по дате публикации
-        all_news.sort(key=lambda x: x['published'], reverse=True)
-        return all_news
-
-    def filter_news_by_keywords(self, news_items: List[Dict], keywords: List[str]) -> List[Dict]:
-        """Фильтрует новости по ключевым словам."""
-        if not keywords:
-            return news_items
-
-        filtered_news = []
-        for news in news_items:
-            text = f"{news['title']} {news['description']}".lower()
-            if any(keyword.lower() in text for keyword in keywords):
-                filtered_news.append(news)
-
-        return filtered_news 
+async def fetch(url: str) -> List[Dict]:
+    """Получает и парсит RSS-канал. Ошибки сети и HTTP пробрасываются."""
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=HTTP_TIMEOUT)) as session:
+        async with session.get(url) as response:
+            response.raise_for_status()
+            return parse_feed(await response.text())
