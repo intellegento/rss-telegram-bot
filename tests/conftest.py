@@ -52,3 +52,73 @@ def db(migrated_db):
     _truncate_all()
     yield database.DatabaseManager()
     _truncate_all()
+
+
+SAMPLES = os.path.join(ROOT, "tests", "samples")
+
+
+def sample(name):
+    with open(os.path.join(SAMPLES, name), encoding="utf-8") as f:
+        return f.read()
+
+
+class FakeHTTP:
+    """Подменяет aiohttp.ClientSession: отдаёт заданный ответ и запоминает запросы."""
+
+    def __init__(self):
+        self.status = 200
+        self.body = ""
+        self.urls = []
+        self.timeouts = []
+
+    def __call__(self, timeout=None, **kwargs):
+        self.timeouts.append(timeout.total)
+        return _FakeSession(self)
+
+
+class _FakeSession:
+    def __init__(self, http):
+        self.http = http
+
+    def get(self, url, **kwargs):
+        self.http.urls.append(url)
+        return _FakeResponse(self.http.status, self.http.body)
+
+    post = get
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+
+class _FakeResponse:
+    def __init__(self, status, body):
+        self.status = status
+        self.body = body
+
+    def raise_for_status(self):
+        if self.status >= 400:
+            raise RuntimeError(f"HTTP {self.status}")
+
+    async def text(self):
+        return self.body
+
+    async def json(self):
+        return self.body
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+
+@pytest.fixture
+def fake_http(monkeypatch):
+    import aiohttp
+
+    http = FakeHTTP()
+    monkeypatch.setattr(aiohttp, "ClientSession", http)
+    return http

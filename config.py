@@ -30,6 +30,16 @@ HTTP_TIMEOUT = 15
 # Экземпляр RSSHub для Telegram-каналов и маршрутов RSSHub
 RSSHUB_BASE_URL = (os.getenv("RSSHUB_BASE_URL") or "https://rsshub.app").rstrip("/")
 
+# Минимальный интервал опроса одного источника по типу (в минутах)
+FETCH_INTERVAL_MINUTES = {
+    'rss': 10,
+    'binance': 10,
+    'rsshub': 30,
+    'telegram': 30,
+}
+# После ошибок интервал удваивается, но не дольше этого (в минутах)
+MAX_FETCH_INTERVAL_MINUTES = 24 * 60
+
 # Лимиты бесплатной версии; для премиума ограничений нет
 FREE_KEYWORDS_LIMIT = 5
 FREE_SOURCES_LIMIT = 2

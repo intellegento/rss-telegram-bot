@@ -9,9 +9,9 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.sql import func
 from telegram.error import Forbidden
 
-from config import MAX_DELIVERIES_PER_RUN, POSTS_RETENTION_DAYS
+from config import FETCH_INTERVAL_MINUTES, MAX_DELIVERIES_PER_RUN, MAX_FETCH_INTERVAL_MINUTES, POSTS_RETENTION_DAYS
 from database import Delivery, Keyword, NewsSource, Post, Session, User, engine, user_sources
-from news_sources import binance_handler, rss_handler
+from news_sources import binance_handler, rss_handler, rsshub
 from utils import format_message, matches_keywords
 
 logger = logging.getLogger(__name__)
@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 FETCHERS = {
     'rss': rss_handler.fetch,
     'binance': binance_handler.fetch,
+    'telegram': rsshub.fetch_telegram,
+    'rsshub': rsshub.fetch_route,
 }
 
 
@@ -28,7 +30,7 @@ def guid_hash(guid: str) -> str:
 
 
 async def collect() -> int:
-    """Опрашивает активные источники с подписчиками и сохраняет новые посты.
+    """Опрашивает активные источники с подписчиками, у которых наступил next_fetch_at, и сохраняет новые посты.
 
     Удаляет посты старше POSTS_RETENTION_DAYS вместе с доставками.
     Возвращает число новых постов.
@@ -38,8 +40,12 @@ async def collect() -> int:
     with engine.connect() as connection, Session(bind=connection) as session:
         session.execute(delete(Post).where(Post.fetched_at < func.now() - timedelta(days=POSTS_RETENTION_DAYS)))
         sources = session.execute(
-            select(NewsSource.id, NewsSource.url, NewsSource.type)
-            .where(NewsSource.is_active, NewsSource.id.in_(select(user_sources.c.source_id)))
+            select(NewsSource.id, NewsSource.url, NewsSource.type, NewsSource.error_count)
+            .where(
+                NewsSource.is_active,
+                NewsSource.id.in_(select(user_sources.c.source_id)),
+                NewsSource.next_fetch_at <= func.now(),
+            )
         ).all()
         session.commit()
 
@@ -49,10 +55,20 @@ async def collect() -> int:
             if fetch is None:
                 logger.warning(f"Нет обработчика для источника {source.id} типа {source.type}")
                 continue
+            interval = FETCH_INTERVAL_MINUTES[source.type]
             try:
                 items = await fetch(source.url)
             except Exception as e:
-                logger.error(f"Ошибка при получении новостей из {source.url}: {e}")
+                # Сеть, 429, 5xx, невалидная лента: откладываем опрос, интервал удваивается
+                error_count = source.error_count + 1
+                delay = min(interval * 2 ** error_count, MAX_FETCH_INTERVAL_MINUTES)
+                logger.error(f"Ошибка при получении новостей из {source.url} ({error_count} подряд): {e}")
+                session.execute(
+                    update(NewsSource)
+                    .where(NewsSource.id == source.id)
+                    .values(error_count=error_count, next_fetch_at=func.now() + timedelta(minutes=delay))
+                )
+                session.commit()
                 continue
 
             if items:
@@ -74,7 +90,11 @@ async def collect() -> int:
                     .returning(Post.id)
                 )
                 new_posts += len(result.all())
-            session.execute(update(NewsSource).where(NewsSource.id == source.id).values(last_fetch=func.now()))
+            session.execute(
+                update(NewsSource)
+                .where(NewsSource.id == source.id)
+                .values(last_fetch=func.now(), error_count=0, next_fetch_at=func.now() + timedelta(minutes=interval))
+            )
             session.commit()
         return new_posts
 

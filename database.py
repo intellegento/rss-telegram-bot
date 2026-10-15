@@ -49,10 +49,13 @@ class NewsSource(Base):
     id = Column(Integer, primary_key=True)
     url = Column(String, unique=True, nullable=False)
     name = Column(String)  # Добавляем имя источника
-    type = Column(String)  # 'rss' или 'binance'
+    type = Column(String)  # 'rss', 'binance', 'telegram' или 'rsshub'
     is_active = Column(Boolean, default=True)
     added_at = Column(DateTime(timezone=True), server_default=func.now())
     last_fetch = Column(DateTime(timezone=True))
+    # Ошибок подряд; после каждой интервал опроса удваивается
+    error_count = Column(Integer, nullable=False, server_default='0')
+    next_fetch_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 class Post(Base):
     __tablename__ = 'posts'

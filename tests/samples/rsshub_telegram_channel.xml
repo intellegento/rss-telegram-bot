@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
+  <channel>
+    <title><![CDATA[Example Channel - Telegram Channel]]></title>
+    <link>https://t.me/s/examplechannel</link>
+    <atom:link href="https://rsshub.app/telegram/channel/examplechannel" rel="self" type="application/rss+xml"></atom:link>
+    <description><![CDATA[Example channel description - Powered by RSSHub]]></description>
+    <generator>RSSHub</generator>
+    <webMaster>contact@rsshub.app (RSSHub)</webMaster>
+    <language>en</language>
+    <lastBuildDate>Wed, 08 Oct 2025 10:05:00 GMT</lastBuildDate>
+    <ttl>5</ttl>
+    <item>
+      <title><![CDATA[Bitcoin update & market <notes>]]></title>
+      <description><![CDATA[<p>Bitcoin update &amp; market &lt;notes&gt;<br><br>Prices are <b>moving</b>.</p>]]></description>
+      <pubDate>Wed, 08 Oct 2025 10:00:00 GMT</pubDate>
+      <guid isPermaLink="false">https://t.me/examplechannel/101</guid>
+      <link>https://t.me/examplechannel/101</link>
+      <author><![CDATA[Example Channel]]></author>
+    </item>
+    <item>
+      <title><![CDATA[]]></title>
+      <description><![CDATA[<div class="tgme_widget_message_text">Это очень длинный пост про bitcoin без заголовка, в котором текст продолжается<br>и продолжается дальше, чтобы превысить сто символов и проверить обрезку &lt;b&gt;заголовка&lt;/b&gt;.</div><img src="https://cdn.example/photo.jpg">]]></description>
+      <pubDate>Wed, 08 Oct 2025 10:01:00 GMT</pubDate>
+      <guid isPermaLink="false">https://t.me/examplechannel/102</guid>
+      <link>https://t.me/examplechannel/102</link>
+      <author><![CDATA[Example Channel]]></author>
+    </item>
+  </channel>
+</rss>

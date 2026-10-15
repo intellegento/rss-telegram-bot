@@ -1,8 +1,18 @@
 import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 import main
 from config import FREE_KEYWORDS_LIMIT, FREE_SOURCES_LIMIT
+from conftest import sample
+
+
+@pytest.fixture(autouse=True)
+def valid_feed(fake_http):
+    # Проверка ленты при добавлении источника получает записанный ответ RSSHub, без сети
+    fake_http.body = sample("rsshub_telegram_channel.xml")
+    return fake_http
 
 
 def make_update(user_id, text):
@@ -114,3 +124,98 @@ def test_source_name_and_url_with_html_chars_are_escaped(db):
     assert set(tags) == {"b"}
     assert "A &lt; B &amp; C" in text
     assert "https://a.example/rss?a=1&amp;b=&lt;2&gt;" in text
+
+
+def telegram_context():
+    context = MagicMock()
+    context.user_data = {"source_type": "telegram"}
+    return context
+
+
+def test_same_channel_added_differently_is_one_source(db, valid_feed):
+    import database
+
+    db.add_user(1)
+    db.add_user(2)
+    bot = main.NewsBot()
+
+    reply(bot.process_add_source, 1, "@ExampleChannel", telegram_context())
+    reply(bot.process_add_source, 2, "https://t.me/s/examplechannel/101", telegram_context())
+
+    with db.Session() as session:
+        sources = session.query(database.NewsSource).all()
+    assert [(s.url, s.type) for s in sources] == [("https://t.me/examplechannel", "telegram")]
+    assert db.get_sources(1)[0]["id"] == db.get_sources(2)[0]["id"] == sources[0].id
+    assert valid_feed.urls == ["https://rsshub.app/telegram/channel/examplechannel"] * 2
+
+
+def test_invalid_channel_feed_does_not_subscribe(db, valid_feed):
+    db.add_user(1)
+    bot = main.NewsBot()
+    valid_feed.status = 503
+    valid_feed.body = sample("rsshub_error.html")
+
+    text = reply(bot.process_add_source, 1, "@privatechannel", telegram_context())
+
+    assert "закрыт" in text and "веб-превью" in text
+    assert db.get_sources(1) == []
+
+
+def test_invalid_rss_feed_does_not_subscribe(db, valid_feed):
+    db.add_user(1)
+    bot = main.NewsBot()
+    valid_feed.body = "<html>not a feed</html>"
+
+    text = reply(bot.process_add_source, 1, "A | https://a.example/page", rss_context())
+
+    assert "RSS" in text
+    assert db.get_sources(1) == []
+
+
+def test_not_a_channel_input_is_rejected(db, valid_feed):
+    db.add_user(1)
+    bot = main.NewsBot()
+
+    text = reply(bot.process_add_source, 1, "https://example.com/x", telegram_context())
+
+    assert "канал" in text
+    assert valid_feed.urls == []
+    assert db.get_sources(1) == []
+
+
+def test_rsshub_url_is_stored_as_route_path(db, valid_feed):
+    db.add_user(1)
+    bot = main.NewsBot()
+
+    reply(bot.process_add_source, 1, "YT | https://rsshub.app/youtube/channel/UC1", rss_context())
+    reply(bot.process_add_source, 1, "Plain | https://a.example/rss", rss_context())
+
+    sources = {src["name"]: (src["url"], src["type"]) for src in db.get_sources(1)}
+    assert sources == {
+        "YT": ("/youtube/channel/UC1", "rsshub"),
+        "Plain": ("https://a.example/rss", "rss"),
+    }
+
+
+def test_source_limit_applies_to_all_types(db, valid_feed):
+    db.add_user(1)
+    bot = main.NewsBot()
+    reply(bot.process_add_source, 1, "A | https://a.example/rss", rss_context())
+    reply(bot.process_add_source, 1, "YT | https://rsshub.app/youtube/channel/UC1", rss_context())
+
+    text = reply(bot.process_add_source, 1, "@examplechannel", telegram_context())
+
+    assert f"{FREE_SOURCES_LIMIT} из {FREE_SOURCES_LIMIT}" in text
+    assert len(db.get_sources(1)) == FREE_SOURCES_LIMIT
+
+
+def test_sources_list_shows_all_types(db):
+    db.add_user(1)
+    db.add_source(1, url="https://t.me/examplechannel", name="@examplechannel", source_type="telegram")
+    db.add_source(1, url="/youtube/channel/UC1", name="YT", source_type="rsshub")
+    bot = main.NewsBot()
+
+    text = reply(bot.sources_command, 1, "/sources")
+
+    assert "@examplechannel" in text
+    assert "YT" in text

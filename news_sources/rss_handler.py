@@ -8,8 +8,13 @@ from config import HTTP_TIMEOUT
 
 
 def parse_feed(content: str) -> List[Dict]:
-    """Парсит содержимое RSS-канала в записи (guid, title, url, summary, published_at)."""
+    """Парсит содержимое RSS-канала в записи (guid, title, url, summary, published_at).
+
+    Если это не RSS/Atom, бросает ValueError.
+    """
     feed = feedparser.parse(content)
+    if not feed.get('version'):
+        raise ValueError("ответ не является RSS/Atom-лентой")
     news_items = []
 
     for entry in feed.entries:
@@ -19,6 +24,10 @@ def parse_feed(content: str) -> List[Dict]:
         # Очищаем описание от HTML-тегов
         soup = BeautifulSoup(entry.get('description', ''), 'html.parser')
         clean_description = soup.get_text()
+
+        # Посты Telegram часто без заголовка: берём начало текста
+        if not title.strip():
+            title = " ".join(soup.get_text(" ").split())[:100]
 
         # Получаем дату публикации
         published = entry.get('published_parsed', None)

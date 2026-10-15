@@ -20,7 +20,8 @@ from config import (
     FREE_SOURCES_LIMIT,
 )
 from database import DatabaseManager, ADDED, DUPLICATE, LIMIT, NO_USER
-from pipeline import collect, deliver
+from news_sources.rsshub import channel_name, channel_url, route_path
+from pipeline import FETCHERS, collect, deliver
 from utils import validate_keyword, clean_username
 
 # Состояния для ConversationHandler
@@ -54,6 +55,14 @@ def limit_message(what: str, used: int, limit: int) -> str:
     )
 
 NO_USER_MESSAGE = "❌ Сначала отправьте /start."
+
+# Разделы списка источников: тип, заголовок, показывать ли адрес
+SOURCE_SECTIONS = [
+    ('rss', "📰 <b>RSS-каналы:</b>", True),
+    ('telegram', "✈️ <b>Telegram-каналы:</b>", True),
+    ('rsshub', "🧩 <b>Маршруты RSSHub:</b>", True),
+    ('binance', "💰 <b>Binance:</b>", False),
+]
 
 class NewsBot:
     def __init__(self):
@@ -222,24 +231,22 @@ class NewsBot:
     async def sources_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Показывает список источников пользователя."""
         sources = self.db.get_sources(update.effective_user.id)
-        rss_sources = [src for src in sources if src['type'] == 'rss']
-        binance_sources = [src for src in sources if src['type'] == 'binance']
 
         message = "📋 <b>Ваши источники новостей:</b>\n\n"
         if not sources:
             message += "У вас пока нет источников.\n"
-        
-        if rss_sources:
-            message += "📰 <b>RSS-каналы:</b>\n"
-            for src in rss_sources:
+
+        for source_type, header, show_url in SOURCE_SECTIONS:
+            section = [src for src in sources if src['type'] == source_type]
+            if not section:
+                continue
+            message += f"{header}\n"
+            for src in section:
                 last_fetch = src['last_fetch'].strftime('%d.%m.%Y %H:%M') if src['last_fetch'] else 'Никогда'
-                message += f"• {html.escape(src['name'] or '')} (ID: {src['id']})\n  └ {html.escape(src['url'])}\n  └ Последняя проверка: {last_fetch}\n\n"
-        
-        if binance_sources:
-            message += "\n💰 <b>Binance:</b>\n"
-            for src in binance_sources:
-                last_fetch = src['last_fetch'].strftime('%d.%m.%Y %H:%M') if src['last_fetch'] else 'Никогда'
-                message += f"• {html.escape(src['name'] or '')} (ID: {src['id']})\n  └ Последняя проверка: {last_fetch}\n\n"
+                message += f"• {html.escape(src['name'] or '')} (ID: {src['id']})\n"
+                if show_url:
+                    message += f"  └ {html.escape(src['url'])}\n"
+                message += f"  └ Последняя проверка: {last_fetch}\n\n"
 
         message += "\nДля управления источниками используйте команды:\n"
         message += "/add_source - Добавить источник\n"
@@ -250,13 +257,13 @@ class NewsBot:
     async def add_source_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Начинает процесс добавления источника."""
         keyboard = [
-            ["RSS-канал", "Binance"],
+            ["RSS-канал", "Telegram-канал", "Binance"],
             ["Отмена"]
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text(
             "Выберите тип источника:\n\n"
-            "Публичный Telegram-канал добавляется как RSS-лента RSSHub",
+            "Маршрут RSSHub добавляется как RSS-канал: пришлите его полный адрес",
             reply_markup=reply_markup
         )
         return ADDING_SOURCE
@@ -279,6 +286,29 @@ class NewsBot:
         else:
             await update.message.reply_text(NO_USER_MESSAGE)
 
+    async def subscribe(self, update: Update, context: ContextTypes.DEFAULT_TYPE,
+                        source_type: str, url: str, name: str, added_text: str) -> int:
+        """Проверяет ленту и подписывает пользователя на источник. Возвращает следующее состояние."""
+        # Один запрос к ленте: без корректного RSS/Atom подписка не создаётся
+        try:
+            await FETCHERS[source_type](url)
+        except Exception as e:
+            logger.info(f"Лента {url} не прошла проверку: {e}")
+            if source_type == 'telegram':
+                error = ("❌ Не удалось получить посты канала: канал закрытый, не существует "
+                         "или без веб-превью (t.me/s/...).")
+            else:
+                error = "❌ По этому адресу нет корректной RSS/Atom-ленты или источник сейчас недоступен."
+            await update.message.reply_text(error + "\nПопробуйте другой источник или нажмите 'Отмена'")
+            return ADDING_SOURCE
+
+        result = self.db.add_source(update.effective_user.id, url=url, name=name, source_type=source_type)
+        await self.reply_add_source_result(update, result, added_text)
+        if result == DUPLICATE:
+            return ADDING_SOURCE
+        context.user_data.pop('source_type', None)
+        return CHOOSING_ACTION
+
     async def process_add_source(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Обрабатывает добавление источника."""
         text = update.message.text
@@ -294,14 +324,23 @@ class NewsBot:
             return CHOOSING_ACTION
 
         # Выбор типа источника
-        if text in ["RSS-канал", "Binance"]:
-            if text == "RSS-канал":
+        if text in ["RSS-канал", "Telegram-канал", "Binance"]:
+            if text == "Telegram-канал":
+                context.user_data['source_type'] = 'telegram'
+                await update.message.reply_text(
+                    "Пришлите публичный канал в любом виде:\n"
+                    "@channel, t.me/channel или ссылку на пост канала\n\n"
+                    "Для отмены нажмите кнопку 'Отмена'"
+                )
+                return ADDING_SOURCE
+            elif text == "RSS-канал":
                 context.user_data['source_type'] = 'rss'
                 await update.message.reply_text(
                     "Введите название и URL RSS-канала в формате:\n"
                     "название | url\n\n"
                     "Например:\n"
-                    "CoinTelegraph | https://cointelegraph.com/rss\n\n"
+                    "CoinTelegraph | https://cointelegraph.com/rss\n"
+                    "Можно прислать и полный адрес маршрута RSSHub.\n\n"
                     "Для отмены нажмите кнопку 'Отмена'"
                 )
                 return ADDING_SOURCE
@@ -319,6 +358,28 @@ class NewsBot:
                         f"❌ Ошибка при добавлении Binance: {str(e)}"
                     )
                 return CHOOSING_ACTION
+
+        # Обработка добавления Telegram-канала
+        if context.user_data.get('source_type') == 'telegram':
+            name = channel_name(text)
+            if not name:
+                await update.message.reply_text(
+                    "❌ Не удалось распознать публичный канал. Пришлите @channel, "
+                    "ссылку t.me/channel или ссылку на пост канала.\n"
+                    "Для отмены нажмите кнопку 'Отмена'"
+                )
+                return ADDING_SOURCE
+            try:
+                return await self.subscribe(
+                    update, context, 'telegram', channel_url(name), f"@{name}",
+                    f"✅ Канал @{name} успешно добавлен!"
+                )
+            except Exception as e:
+                await update.message.reply_text(
+                    f"❌ Ошибка при добавлении канала: {str(e)}\n"
+                    "Попробуйте снова или нажмите 'Отмена'"
+                )
+                return ADDING_SOURCE
 
         # Обработка добавления RSS-канала
         if 'source_type' in context.user_data and context.user_data['source_type'] == 'rss':
@@ -339,12 +400,12 @@ class NewsBot:
                     )
                     return ADDING_SOURCE
 
-                result = self.db.add_source(user_id, url=url, name=name, source_type='rss')
-                await self.reply_add_source_result(update, result, f"✅ RSS-канал '{name}' успешно добавлен!")
-                if result == DUPLICATE:
-                    return ADDING_SOURCE
-                context.user_data.pop('source_type', None)
-                return CHOOSING_ACTION
+                # Адрес RSSHub хранится как путь маршрута, остальное — обычный RSS
+                path = route_path(url)
+                source_type, url = ('rsshub', path) if path else ('rss', url)
+                return await self.subscribe(
+                    update, context, source_type, url, name, f"✅ RSS-канал '{name}' успешно добавлен!"
+                )
             except Exception as e:
                 await update.message.reply_text(
                     f"❌ Ошибка при добавлении RSS-канала: {str(e)}\n"

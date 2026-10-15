@@ -31,7 +31,17 @@ def subscribe(db, telegram_id, keyword="bitcoin", url=URL):
     db.add_source(telegram_id, url=url, name="A", source_type="rss")
 
 
+def make_due():
+    """Делает все источники готовыми к опросу, не дожидаясь интервала."""
+    import database
+    from sqlalchemy import text
+
+    with database.engine.begin() as conn:
+        conn.execute(text("UPDATE news_sources SET next_fetch_at = now() - interval '1 second'"))
+
+
 def collect(items):
+    make_due()
     fetch = AsyncMock(return_value=items)
     with patch.dict(pipeline.FETCHERS, {"rss": fetch}):
         new = asyncio.run(pipeline.collect())
@@ -263,4 +273,139 @@ def test_title_with_html_special_chars_is_escaped(db):
 
 
 def test_fetchers_cover_source_types():
-    assert set(pipeline.FETCHERS) == {"rss", "binance"}
+    from config import FETCH_INTERVAL_MINUTES
+
+    assert set(pipeline.FETCHERS) == {"rss", "binance", "telegram", "rsshub"}
+    assert set(FETCH_INTERVAL_MINUTES) == set(pipeline.FETCHERS)
+
+
+def source_state(db):
+    """error_count и задержка до следующего опроса в минутах по часам БД."""
+    import database
+    from sqlalchemy import text
+
+    with database.engine.connect() as conn:
+        return conn.execute(text(
+            "SELECT error_count, extract(epoch FROM next_fetch_at - now()) / 60 FROM news_sources"
+        )).one()
+
+
+def add_channel(db, telegram_id, url="https://t.me/examplechannel"):
+    if not db.get_user(telegram_id):
+        db.add_user(telegram_id)
+    db.add_keyword(telegram_id, "bitcoin")
+    db.add_source(telegram_id, url=url, name="@examplechannel", source_type="telegram")
+
+
+def test_source_is_not_fetched_before_next_fetch_at(db):
+    subscribe(db, 1)
+    collect(make_items(1))
+
+    fetch = AsyncMock(return_value=[])
+    with patch.dict(pipeline.FETCHERS, {"rss": fetch}):
+        asyncio.run(pipeline.collect())
+
+    fetch.assert_not_awaited()
+    # Обычный RSS опрашивается не чаще раза в 10 минут
+    _, delay = source_state(db)
+    assert 9 < delay <= 10
+
+
+def test_429_backs_off_and_success_resets(db, fake_http):
+    from conftest import sample
+
+    add_channel(db, 1)
+    fake_http.status = 429
+    fake_http.body = "Too Many Requests"
+
+    make_due()
+    asyncio.run(pipeline.collect())
+    errors, first_delay = source_state(db)
+    assert errors == 1
+    assert 59 < first_delay <= 60  # 30 минут для telegram, удвоено
+
+    make_due()
+    asyncio.run(pipeline.collect())
+    errors, second_delay = source_state(db)
+    assert errors == 2
+    assert 119 < second_delay <= 120
+
+    fake_http.status = 200
+    fake_http.body = sample("rsshub_telegram_channel.xml")
+    make_due()
+    assert asyncio.run(pipeline.collect()) == 2
+    errors, delay = source_state(db)
+    assert errors == 0
+    assert 29 < delay <= 30
+
+
+def test_backoff_is_capped_at_24_hours(db, fake_http):
+    import database
+
+    add_channel(db, 1)
+    with db.Session() as session:
+        session.query(database.NewsSource).update({"error_count": 50})
+        session.commit()
+    fake_http.status = 503
+
+    make_due()
+    asyncio.run(pipeline.collect())
+
+    errors, delay = source_state(db)
+    assert errors == 51
+    assert 24 * 60 - 1 < delay <= 24 * 60
+
+
+def test_invalid_feed_counts_as_error(db, fake_http):
+    add_channel(db, 1)
+    fake_http.body = "<html>not a feed</html>"
+
+    make_due()
+    asyncio.run(pipeline.collect())
+
+    assert source_state(db)[0] == 1
+
+
+def test_rsshub_base_url_change_needs_no_db_change(db, fake_http, monkeypatch):
+    import database
+    from conftest import sample
+
+    add_channel(db, 1)
+    fake_http.body = sample("rsshub_telegram_channel.xml")
+    with db.Session() as session:
+        before = [(s.url, s.type) for s in session.query(database.NewsSource)]
+
+    for base in ("https://rsshub.app", "https://rss.example.org"):
+        monkeypatch.setattr("config.RSSHUB_BASE_URL", base)
+        make_due()
+        asyncio.run(pipeline.collect())
+
+    assert fake_http.urls == [
+        "https://rsshub.app/telegram/channel/examplechannel",
+        "https://rss.example.org/telegram/channel/examplechannel",
+    ]
+    with db.Session() as session:
+        assert [(s.url, s.type) for s in session.query(database.NewsSource)] == before
+    assert before == [("https://t.me/examplechannel", "telegram")]
+
+
+def test_telegram_post_link_points_to_telegram(db, fake_http):
+    from conftest import sample
+
+    add_channel(db, 1)
+    # Посты образца опубликованы в 2025 году: подписку делаем старше них
+    with db.Session() as session:
+        from sqlalchemy import text
+        session.execute(text("UPDATE user_sources SET created_at = '2025-01-01'"))
+        session.commit()
+    fake_http.body = sample("rsshub_telegram_channel.xml")
+    make_due()
+    asyncio.run(pipeline.collect())
+    bot = make_bot()
+
+    deliver(bot)
+
+    texts = [text for _, text in sent(bot)]
+    assert len(texts) == 2
+    assert any("href='https://t.me/examplechannel/101'" in text for text in texts)
+    assert any("<b>Это очень длинный пост про bitcoin" in text for text in texts)

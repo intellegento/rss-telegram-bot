@@ -20,7 +20,7 @@ def format_message(news_item: Dict) -> str:
     else:
         date_str = "Дата не указана"
 
-    source_emoji = "📰" if source == "rss" else "💰"
+    source_emoji = "💰" if source == "binance" else "📰"
     
     message = (
         f"{source_emoji} <b>{title}</b>\n\n"
