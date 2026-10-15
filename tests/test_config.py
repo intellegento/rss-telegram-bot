@@ -45,3 +45,20 @@ def test_missing_database_url_exits_with_message(monkeypatch, value):
 
     monkeypatch.undo()
     importlib.reload(config)
+
+
+@pytest.mark.parametrize("url", [
+    "postgresql://u@h/db",
+    "postgres://u@h/db",
+    "postgresql+psycopg://u@h/db",
+])
+def test_database_url_scheme_is_normalized_to_psycopg(monkeypatch, url):
+    import config
+
+    # Интеграция Neon в Vercel отдаёт postgresql:// или postgres://
+    monkeypatch.setenv("DATABASE_URL", url)
+    importlib.reload(config)
+    assert config.DATABASE_URL == "postgresql+psycopg://u@h/db"
+
+    monkeypatch.undo()
+    importlib.reload(config)

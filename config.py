@@ -33,4 +33,8 @@ MAX_KEYWORDS_PER_USER = 10
 # База данных
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
-    raise SystemExit("Ошибка: переменная окружения DATABASE_URL не задана. Укажите её в .env (см. .env.example).") 
+    raise SystemExit("Ошибка: переменная окружения DATABASE_URL не задана. Укажите её в .env (см. .env.example).")
+# Neon в Vercel отдаёт postgresql:// или postgres://, SQLAlchemy нужен драйвер psycopg 3
+for _scheme in ("postgresql://", "postgres://"):
+    if DATABASE_URL.startswith(_scheme):
+        DATABASE_URL = "postgresql+psycopg://" + DATABASE_URL[len(_scheme):]
