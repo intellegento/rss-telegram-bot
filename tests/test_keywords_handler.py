@@ -219,3 +219,21 @@ def test_sources_list_shows_all_types(db):
 
     assert "@examplechannel" in text
     assert "YT" in text
+
+
+def test_channel_via_rsshub_url_is_same_telegram_source(db, valid_feed, monkeypatch):
+    import database
+
+    monkeypatch.setattr("config.RSSHUB_BASE_URL", "https://rss.example.org")
+    for uid in (1, 2, 3):
+        db.add_user(uid)
+    bot = main.NewsBot()
+
+    reply(bot.process_add_source, 1, "t.me/examplechannel", telegram_context())
+    reply(bot.process_add_source, 2, "Канал | https://rsshub.app/telegram/channel/ExampleChannel", rss_context())
+    reply(bot.process_add_source, 3, "Канал | https://rss.example.org/telegram/channel/examplechannel", rss_context())
+
+    with db.Session() as session:
+        sources = session.query(database.NewsSource).all()
+    assert [(s.url, s.type) for s in sources] == [("https://t.me/examplechannel", "telegram")]
+    assert all(len(db.get_sources(uid)) == 1 for uid in (1, 2, 3))

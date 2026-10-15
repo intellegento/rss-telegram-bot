@@ -20,7 +20,7 @@ from config import (
     FREE_SOURCES_LIMIT,
 )
 from database import DatabaseManager, ADDED, DUPLICATE, LIMIT, NO_USER
-from news_sources.rsshub import channel_name, channel_url, route_path
+from news_sources.rsshub import channel_name, channel_url, route_channel_name, route_path
 from pipeline import FETCHERS, collect, deliver
 from utils import validate_keyword, clean_username
 
@@ -400,9 +400,16 @@ class NewsBot:
                     )
                     return ADDING_SOURCE
 
-                # Адрес RSSHub хранится как путь маршрута, остальное — обычный RSS
+                # Адрес RSSHub хранится как путь маршрута, остальное — обычный RSS.
+                # Маршрут Telegram-канала становится тем же источником, что и t.me/<имя>
                 path = route_path(url)
-                source_type, url = ('rsshub', path) if path else ('rss', url)
+                channel = path and route_channel_name(path)
+                if channel:
+                    source_type, url, name = 'telegram', channel_url(channel), f"@{channel}"
+                elif path:
+                    source_type, url = 'rsshub', path
+                else:
+                    source_type = 'rss'
                 return await self.subscribe(
                     update, context, source_type, url, name, f"✅ RSS-канал '{name}' успешно добавлен!"
                 )

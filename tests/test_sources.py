@@ -130,3 +130,14 @@ def test_telegram_channel_sample_is_parsed(fake_http):
     assert len(untitled["title"]) <= 100
     assert "<" not in untitled["title"] and "div" not in untitled["title"]
     assert untitled["url"] == "https://t.me/examplechannel/102"
+
+
+@pytest.mark.parametrize("path, expected", [
+    ("/telegram/channel/ExampleChannel", "examplechannel"),
+    ("/telegram/channel/examplechannel/showLinkPreview=0", "examplechannel"),
+    ("/telegram/channel/examplechannel?limit=5", "examplechannel"),
+    ("/telegram/stickerpack/examplechannel", None),
+    ("/github/release/DIYgod/RSSHub", None),
+])
+def test_route_channel_name(path, expected):
+    assert rsshub.route_channel_name(path) == expected

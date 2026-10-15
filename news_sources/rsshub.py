@@ -22,6 +22,16 @@ def channel_name(text: str) -> Optional[str]:
     return match.group(1).lower() if match else None
 
 
+# Маршрут RSSHub /telegram/channel/<имя>[/routeParams][?query]
+_ROUTE_CHANNEL_RE = re.compile(r"^/telegram/channel/([a-z][a-z0-9_]{4,31})(?:/[^?]*)?(?:\?.*)?$", re.IGNORECASE)
+
+
+def route_channel_name(path: str) -> Optional[str]:
+    """Имя канала, если путь маршрута RSSHub — Telegram-канал, иначе None."""
+    match = _ROUTE_CHANNEL_RE.match(path)
+    return match.group(1).lower() if match else None
+
+
 def channel_url(name: str) -> str:
     """Канонический адрес канала, который хранится в news_sources.url."""
     return f"https://t.me/{name}"
