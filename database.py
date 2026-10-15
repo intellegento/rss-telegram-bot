@@ -153,8 +153,15 @@ class DatabaseManager:
         """Добавляет новый источник новостей."""
         with self.Session() as session:
             try:
-                source = NewsSource(url=url, name=name, type=source_type)
-                session.add(source)
+                # Удалённый (неактивный) источник с тем же url реактивируем
+                source = session.query(NewsSource).filter_by(url=url, is_active=False).first()
+                if source:
+                    source.is_active = True
+                    source.name = name
+                    source.type = source_type
+                else:
+                    source = NewsSource(url=url, name=name, type=source_type)
+                    session.add(source)
                 session.commit()
                 return True
             except Exception as e:
