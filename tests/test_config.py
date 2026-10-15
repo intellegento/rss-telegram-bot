@@ -4,7 +4,8 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-ENV_VARS = ["TELEGRAM_TOKEN", "DATABASE_URL", "BINANCE_API_KEY", "BINANCE_API_SECRET", "TEST_DATABASE_URL"]
+ENV_VARS = ["TELEGRAM_TOKEN", "DATABASE_URL", "BINANCE_API_KEY", "BINANCE_API_SECRET", "TEST_DATABASE_URL",
+            "RSSHUB_BASE_URL"]
 
 
 def test_config_reads_values_from_env(monkeypatch, capsys):
@@ -59,6 +60,26 @@ def test_database_url_scheme_is_normalized_to_psycopg(monkeypatch, url):
     monkeypatch.setenv("DATABASE_URL", url)
     importlib.reload(config)
     assert config.DATABASE_URL == "postgresql+psycopg://u@h/db"
+
+    monkeypatch.undo()
+    importlib.reload(config)
+
+
+@pytest.mark.parametrize("value, expected", [
+    (None, "https://rsshub.app"),
+    ("", "https://rsshub.app"),
+    ("https://rsshub.example.com/", "https://rsshub.example.com"),
+])
+def test_rsshub_base_url(monkeypatch, value, expected):
+    import config
+
+    monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: None)
+    if value is None:
+        monkeypatch.delenv("RSSHUB_BASE_URL", raising=False)
+    else:
+        monkeypatch.setenv("RSSHUB_BASE_URL", value)
+    importlib.reload(config)
+    assert config.RSSHUB_BASE_URL == expected
 
     monkeypatch.undo()
     importlib.reload(config)
