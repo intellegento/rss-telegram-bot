@@ -82,7 +82,7 @@ async def collect() -> int:
 async def deliver(bot) -> int:
     """Отправляет пользователям недоставленные посты по их ключевым словам.
 
-    Берутся только посты, полученные после подписки, не больше MAX_DELIVERIES_PER_RUN на пользователя.
+    Берутся только посты, опубликованные (без даты — полученные) после подписки, не больше MAX_DELIVERIES_PER_RUN на пользователя.
     Возвращает число отправленных сообщений.
     """
     with engine.connect() as connection, Session(bind=connection) as session:
@@ -104,10 +104,16 @@ async def deliver(bot) -> int:
                 NewsSource.type.label('source'),
             )
             .join(user_sources, user_sources.c.user_id == User.id)
-            .join(Post, (Post.source_id == user_sources.c.source_id) & (Post.fetched_at > user_sources.c.created_at))
+            .join(Post, Post.source_id == user_sources.c.source_id)
             .join(NewsSource, NewsSource.id == Post.source_id)
             .outerjoin(Delivery, (Delivery.user_id == User.id) & (Delivery.post_id == Post.id))
-            .where(User.is_active, User.id.in_(list(keywords)), Delivery.post_id.is_(None))
+            .where(
+                User.is_active,
+                User.id.in_(list(keywords)),
+                Delivery.post_id.is_(None),
+                # Старые посты ленты подписчику не приходят; без даты публикации сравнивается время получения
+                func.coalesce(Post.published_at, Post.fetched_at) >= user_sources.c.created_at,
+            )
             .order_by(Post.published_at.desc().nulls_last(), Post.id.desc())
         ).all()
         session.commit()

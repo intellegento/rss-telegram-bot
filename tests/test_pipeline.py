@@ -10,15 +10,15 @@ import pipeline
 URL = "https://a.example/rss"
 
 
-def make_items(n, title="bitcoin news"):
-    base = datetime(2025, 1, 1, tzinfo=timezone.utc)
+def make_items(n, title="bitcoin news", published_at=None, guid="guid"):
+    # Без даты публикации доставка сравнивает fetched_at: обе отметки ставит часы БД
     return [
         {
-            "guid": f"guid-{i}",
+            "guid": f"{guid}-{i}",
             "title": f"{title} {i}",
             "url": f"https://a.example/{i}",
             "summary": "text",
-            "published_at": base + timedelta(minutes=i),
+            "published_at": published_at and published_at + timedelta(minutes=i),
         }
         for i in range(n)
     ]
@@ -129,6 +129,21 @@ def test_post_fetched_before_subscription_is_not_delivered(db):
     deliver(bot)
 
     assert [chat_id for chat_id, _ in sent(bot)] == [1]
+
+
+def test_posts_published_before_subscription_are_not_delivered(db):
+    # Первый подписчик нового источника не получает старые посты ленты
+    subscribe(db, 1)
+    collect(make_items(30, published_at=datetime(2025, 1, 1, tzinfo=timezone.utc), guid="old"))
+    bot = make_bot()
+
+    assert deliver(bot) == 0
+
+    # Запас в час, чтобы не зависеть от расхождения часов с БД
+    collect(make_items(1, title="bitcoin fresh", published_at=datetime.now(timezone.utc) + timedelta(hours=1)))
+    assert deliver(bot) == 1
+    [(_, text)] = sent(bot)
+    assert "bitcoin fresh 0" in text
 
 
 def test_only_posts_matching_keywords_are_delivered(db):

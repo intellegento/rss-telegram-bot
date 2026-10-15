@@ -16,7 +16,7 @@ user_sources = Table(
     Base.metadata,
     Column('user_id', Integer, ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
     Column('source_id', Integer, ForeignKey('news_sources.id', ondelete='CASCADE'), primary_key=True),
-    # Пользователю приходят только посты, полученные после подписки
+    # Пользователю приходят только посты, опубликованные после подписки (без даты — полученные после неё)
     Column('created_at', DateTime(timezone=True), server_default=func.now(), nullable=False)
 )
 
