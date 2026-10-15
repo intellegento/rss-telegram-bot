@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-ENV_VARS = ["TELEGRAM_TOKEN", "DATABASE_URL", "BINANCE_API_KEY", "BINANCE_API_SECRET"]
+ENV_VARS = ["TELEGRAM_TOKEN", "DATABASE_URL", "BINANCE_API_KEY", "BINANCE_API_SECRET", "TEST_DATABASE_URL"]
 
 
 def test_config_reads_values_from_env(monkeypatch, capsys):

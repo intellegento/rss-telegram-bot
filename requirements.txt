@@ -7,3 +7,5 @@ SQLAlchemy==2.0.54
 pytz==2023.3.post1
 httpx==0.28.1
 APScheduler==3.11.3
+psycopg[binary]==3.3.6
+alembic==1.20.0

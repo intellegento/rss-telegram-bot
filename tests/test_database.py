@@ -15,3 +15,13 @@ def test_removed_source_can_be_added_again(db):
     [restored] = db.get_sources()
     assert restored["id"] == source["id"]
     assert restored["name"] == "A2"
+
+
+def test_large_telegram_id_is_stored_and_read(db):
+    # ID в Telegram не помещаются в 32 бита
+    db.add_user(7000000000)
+
+    user = db.get_user(7000000000)
+
+    assert user is not None
+    assert user.telegram_id == 7000000000

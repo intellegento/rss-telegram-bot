@@ -1,6 +1,7 @@
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Table, DateTime
+from sqlalchemy import create_engine, Column, Integer, BigInteger, String, Boolean, ForeignKey, Table, DateTime, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.pool import NullPool
 from sqlalchemy.sql import func
 from typing import List, Optional, Dict
 import logging
@@ -14,15 +15,15 @@ Base = declarative_base()
 user_sources = Table(
     'user_sources',
     Base.metadata,
-    Column('user_id', Integer, ForeignKey('users.id')),
-    Column('source_id', Integer, ForeignKey('news_sources.id'))
+    Column('user_id', Integer, ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
+    Column('source_id', Integer, ForeignKey('news_sources.id', ondelete='CASCADE'), primary_key=True)
 )
 
 class User(Base):
     __tablename__ = 'users'
     
     id = Column(Integer, primary_key=True)
-    telegram_id = Column(Integer, unique=True)
+    telegram_id = Column(BigInteger, unique=True)
     is_active = Column(Boolean, default=True)
     update_interval = Column(Integer, default=300)
     last_update = Column(DateTime(timezone=True))
@@ -32,9 +33,10 @@ class User(Base):
 
 class Keyword(Base):
     __tablename__ = 'keywords'
+    __table_args__ = (UniqueConstraint('user_id', 'word'),)
     
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
     word = Column(String)
     
     user = relationship("User", back_populates="keywords")
@@ -52,17 +54,23 @@ class NewsSource(Base):
 
 class SeenNews(Base):
     __tablename__ = 'seen_news'
+    # Уникальное ограничение создаёт индекс (user_id, news_hash), по нему идёт поиск в is_news_seen
+    __table_args__ = (UniqueConstraint('user_id', 'news_hash'),)
     
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
+    user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'))
     news_hash = Column(String)
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
 
-# Создаем движок базы данных
-engine = create_engine(DATABASE_URL)
-
-# Создаем все таблицы
-Base.metadata.create_all(engine)
+# Создаем движок базы данных. Схема создаётся только миграциями Alembic.
+# NullPool: на serverless соединение не переживает вызов функции.
+# prepare_threshold=None: Neon pooler (PgBouncer, transaction mode) не гарантирует,
+# что следующий запрос попадёт в то же серверное соединение, где был подготовлен statement.
+engine = create_engine(
+    DATABASE_URL,
+    poolclass=NullPool,
+    connect_args={"sslmode": "require", "prepare_threshold": None},
+)
 
 # Создаем сессию
 Session = sessionmaker(bind=engine)
