@@ -1,9 +1,9 @@
 python-telegram-bot[job-queue]==22.8
 python-dotenv==1.0.0
-feedparser==6.0.10
+feedparser==6.0.14
 beautifulsoup4==4.12.2
 aiohttp==3.9.1
-SQLAlchemy==2.0.23
+SQLAlchemy==2.0.54
 pytz==2023.3.post1
 httpx==0.28.1
 APScheduler==3.11.3
