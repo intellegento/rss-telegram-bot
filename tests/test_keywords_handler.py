@@ -89,3 +89,28 @@ def test_user_sees_only_own_sources(db):
 
     assert "Mine" in text
     assert "Other" not in text
+
+
+def test_source_name_and_url_with_html_chars_are_escaped(db):
+    from html.parser import HTMLParser
+
+    db.add_user(1)
+    db.add_source(1, url="https://a.example/rss?a=1&b=<2>", name="A < B & C", source_type="rss")
+    bot = main.NewsBot()
+    update = make_update(1, "/sources")
+
+    asyncio.run(bot.sources_command(update, MagicMock()))
+
+    text = update.message.reply_text.await_args.args[0]
+    assert update.message.reply_text.await_args.kwargs["parse_mode"] == "HTML"
+    tags = []
+
+    class Collector(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            tags.append(tag)
+
+    Collector().feed(text)
+    # Только теги самого бота, название и URL не ломают разметку
+    assert set(tags) == {"b"}
+    assert "A &lt; B &amp; C" in text
+    assert "https://a.example/rss?a=1&amp;b=&lt;2&gt;" in text

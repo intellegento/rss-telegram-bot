@@ -1,3 +1,4 @@
+import html
 import logging
 from typing import Dict
 
@@ -229,13 +230,13 @@ class NewsBot:
             message += "📰 <b>RSS-каналы:</b>\n"
             for src in rss_sources:
                 last_fetch = src['last_fetch'].strftime('%d.%m.%Y %H:%M') if src['last_fetch'] else 'Никогда'
-                message += f"• {src['name']} (ID: {src['id']})\n  └ {src['url']}\n  └ Последняя проверка: {last_fetch}\n\n"
+                message += f"• {html.escape(src['name'] or '')} (ID: {src['id']})\n  └ {html.escape(src['url'])}\n  └ Последняя проверка: {last_fetch}\n\n"
         
         if binance_sources:
             message += "\n💰 <b>Binance:</b>\n"
             for src in binance_sources:
                 last_fetch = src['last_fetch'].strftime('%d.%m.%Y %H:%M') if src['last_fetch'] else 'Никогда'
-                message += f"• {src['name']} (ID: {src['id']})\n  └ Последняя проверка: {last_fetch}\n\n"
+                message += f"• {html.escape(src['name'] or '')} (ID: {src['id']})\n  └ Последняя проверка: {last_fetch}\n\n"
 
         message += "\nДля управления источниками используйте команды:\n"
         message += "/add_source - Добавить источник\n"
