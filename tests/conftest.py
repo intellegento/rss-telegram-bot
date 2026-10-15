@@ -1,0 +1,8 @@
+import os
+import sys
+
+# Тесты не должны трогать реальную БД и реальный Telegram
+os.environ["DATABASE_URL"] = "sqlite://"
+os.environ["TELEGRAM_TOKEN"] = "test-token"
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
