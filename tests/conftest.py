@@ -62,8 +62,17 @@ def sample(name):
         return f.read()
 
 
+VALID_RSS = """<?xml version="1.0"?>
+<rss version="2.0"><channel><title>t</title>
+<item><title>bitcoin</title><link>https://a.example/1</link></item>
+</channel></rss>"""
+
+
 class FakeHTTP:
-    """Подменяет aiohttp.ClientSession: отдаёт заданный ответ и запоминает запросы."""
+    """Подменяет aiohttp.ClientSession: отдаёт заданный ответ и запоминает запросы.
+
+    body может быть функцией от url, чтобы разные адреса получали разные ответы.
+    """
 
     def __init__(self):
         self.status = 200
@@ -82,7 +91,8 @@ class _FakeSession:
 
     def get(self, url, **kwargs):
         self.http.urls.append(url)
-        return _FakeResponse(self.http.status, self.http.body)
+        body = self.http.body(url) if callable(self.http.body) else self.http.body
+        return _FakeResponse(self.http.status, body)
 
     post = get
 

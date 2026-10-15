@@ -11,7 +11,7 @@ from telegram.error import Forbidden
 
 from config import FETCH_INTERVAL_MINUTES, MAX_DELIVERIES_PER_RUN, MAX_FETCH_INTERVAL_MINUTES, POSTS_RETENTION_DAYS
 from database import Delivery, Keyword, NewsSource, Post, Session, User, engine, user_sources
-from news_sources import binance_handler, rss_handler, rsshub
+from news_sources import binance_handler, rss_handler, rsshub, telegram_handler
 from utils import format_message, matches_keywords
 
 logger = logging.getLogger(__name__)
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 FETCHERS = {
     'rss': rss_handler.fetch,
     'binance': binance_handler.fetch,
-    'telegram': rsshub.fetch_telegram,
+    'telegram': telegram_handler.fetch,
     'rsshub': rsshub.fetch_route,
 }
 

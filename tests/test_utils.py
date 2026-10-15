@@ -63,18 +63,18 @@ def test_matches_keywords(title, summary, keywords, expected):
     assert matches_keywords(title, summary, keywords) is expected
 
 
-def test_untitled_telegram_post_is_shown_with_text_start(fake_http):
+def test_telegram_post_is_shown_with_text_start(fake_http):
     import asyncio
 
     from conftest import sample
-    from news_sources import rsshub
+    from news_sources import telegram_handler
 
-    fake_http.body = sample("rsshub_telegram_channel.xml")
-    _, untitled = asyncio.run(rsshub.fetch_telegram("https://t.me/examplechannel"))
-    untitled["source"] = "telegram"
+    fake_http.body = sample("tme_s_durov.html")
+    post = asyncio.run(telegram_handler.fetch("https://t.me/durov"))[-1]
+    post["source"] = "telegram"
 
-    text = format_message(untitled)
+    text = format_message(post)
 
-    assert "<b>Это очень длинный пост про bitcoin без заголовка" in text
-    assert links(text) == ["https://t.me/examplechannel/102"]
+    assert "<b>✨ Designers × AI 🆕 The mockup era is over." in text
+    assert links(text) == ["https://t.me/durov/552"]
     assert "💰" not in text

@@ -331,9 +331,9 @@ def test_429_backs_off_and_success_resets(db, fake_http):
     assert 119 < second_delay <= 120
 
     fake_http.status = 200
-    fake_http.body = sample("rsshub_telegram_channel.xml")
+    fake_http.body = sample("tme_s_durov.html")
     make_due()
-    assert asyncio.run(pipeline.collect()) == 2
+    assert asyncio.run(pipeline.collect()) == 20
     errors, delay = source_state(db)
     assert errors == 0
     assert 29 < delay <= 30
@@ -356,9 +356,11 @@ def test_backoff_is_capped_at_24_hours(db, fake_http):
     assert 24 * 60 - 1 < delay <= 24 * 60
 
 
-def test_invalid_feed_counts_as_error(db, fake_http):
+def test_channel_page_without_posts_counts_as_error(db, fake_http):
+    from conftest import sample
+
     add_channel(db, 1)
-    fake_http.body = "<html>not a feed</html>"
+    fake_http.body = sample("tme_s_no_posts.html")
 
     make_due()
     asyncio.run(pipeline.collect())
@@ -368,44 +370,48 @@ def test_invalid_feed_counts_as_error(db, fake_http):
 
 def test_rsshub_base_url_change_needs_no_db_change(db, fake_http, monkeypatch):
     import database
-    from conftest import sample
+    from conftest import VALID_RSS, sample
 
     add_channel(db, 1)
-    fake_http.body = sample("rsshub_telegram_channel.xml")
+    db.add_source(1, url="/youtube/channel/UC1", name="YT", source_type="rsshub")
+    fake_http.body = lambda url: sample("tme_s_durov.html") if url.startswith("https://t.me/") else VALID_RSS
     with db.Session() as session:
-        before = [(s.url, s.type) for s in session.query(database.NewsSource)]
+        before = sorted((s.url, s.type) for s in session.query(database.NewsSource))
 
-    for base in ("https://rsshub.app", "https://rss.example.org"):
+    for base in ("https://rsshub.example.com", "https://rss.example.org"):
         monkeypatch.setattr("config.RSSHUB_BASE_URL", base)
         make_due()
         asyncio.run(pipeline.collect())
 
-    assert fake_http.urls == [
-        "https://rsshub.app/telegram/channel/examplechannel",
-        "https://rss.example.org/telegram/channel/examplechannel",
+    # Канал читается с t.me независимо от RSSHub, маршрут — с текущего экземпляра RSSHub
+    assert sorted(fake_http.urls) == [
+        "https://rss.example.org/youtube/channel/UC1",
+        "https://rsshub.example.com/youtube/channel/UC1",
+        "https://t.me/s/examplechannel",
+        "https://t.me/s/examplechannel",
     ]
     with db.Session() as session:
-        assert [(s.url, s.type) for s in session.query(database.NewsSource)] == before
-    assert before == [("https://t.me/examplechannel", "telegram")]
+        assert sorted((s.url, s.type) for s in session.query(database.NewsSource)) == before
+    assert before == [("/youtube/channel/UC1", "rsshub"), ("https://t.me/examplechannel", "telegram")]
 
 
 def test_telegram_post_link_points_to_telegram(db, fake_http):
     from conftest import sample
 
-    add_channel(db, 1)
-    # Посты образца опубликованы в 2025 году: подписку делаем старше них
+    add_channel(db, 1, url="https://t.me/durov")
+    db.add_keyword(1, "designers")
+    # Посты образца опубликованы до подписки: делаем подписку старше них
     with db.Session() as session:
         from sqlalchemy import text
         session.execute(text("UPDATE user_sources SET created_at = '2025-01-01'"))
         session.commit()
-    fake_http.body = sample("rsshub_telegram_channel.xml")
+    fake_http.body = sample("tme_s_durov.html")
     make_due()
     asyncio.run(pipeline.collect())
     bot = make_bot()
 
     deliver(bot)
 
-    texts = [text for _, text in sent(bot)]
-    assert len(texts) == 2
-    assert any("href='https://t.me/examplechannel/101'" in text for text in texts)
-    assert any("<b>Это очень длинный пост про bitcoin" in text for text in texts)
+    [(_, message)] = sent(bot)
+    assert "href='https://t.me/durov/552'" in message
+    assert "<b>✨ Designers × AI" in message

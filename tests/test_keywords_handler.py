@@ -5,13 +5,17 @@ import pytest
 
 import main
 from config import FREE_KEYWORDS_LIMIT, FREE_SOURCES_LIMIT
-from conftest import sample
+from conftest import VALID_RSS, sample
+
+RSSHUB = "https://rss.example.org"
 
 
 @pytest.fixture(autouse=True)
-def valid_feed(fake_http):
-    # Проверка ленты при добавлении источника получает записанный ответ RSSHub, без сети
-    fake_http.body = sample("rsshub_telegram_channel.xml")
+def valid_feed(fake_http, monkeypatch):
+    # Проверка при добавлении получает записанные ответы без сети:
+    # каналы — страницу t.me/s/durov, остальные адреса — корректный RSS
+    monkeypatch.setattr("config.RSSHUB_BASE_URL", RSSHUB)
+    fake_http.body = lambda url: sample("tme_s_durov.html") if url.startswith("https://t.me/s/") else VALID_RSS
     return fake_http
 
 
@@ -146,14 +150,14 @@ def test_same_channel_added_differently_is_one_source(db, valid_feed):
         sources = session.query(database.NewsSource).all()
     assert [(s.url, s.type) for s in sources] == [("https://t.me/examplechannel", "telegram")]
     assert db.get_sources(1)[0]["id"] == db.get_sources(2)[0]["id"] == sources[0].id
-    assert valid_feed.urls == ["https://rsshub.app/telegram/channel/examplechannel"] * 2
+    assert valid_feed.urls == ["https://t.me/s/examplechannel"] * 2
 
 
 def test_invalid_channel_feed_does_not_subscribe(db, valid_feed):
     db.add_user(1)
     bot = main.NewsBot()
-    valid_feed.status = 503
-    valid_feed.body = sample("rsshub_error.html")
+    # t.me перенаправляет закрытый или несуществующий канал на страницу без постов
+    valid_feed.body = sample("tme_s_no_posts.html")
 
     text = reply(bot.process_add_source, 1, "@privatechannel", telegram_context())
 
@@ -187,7 +191,7 @@ def test_rsshub_url_is_stored_as_route_path(db, valid_feed):
     db.add_user(1)
     bot = main.NewsBot()
 
-    reply(bot.process_add_source, 1, "YT | https://rsshub.app/youtube/channel/UC1", rss_context())
+    reply(bot.process_add_source, 1, f"YT | {RSSHUB}/youtube/channel/UC1", rss_context())
     reply(bot.process_add_source, 1, "Plain | https://a.example/rss", rss_context())
 
     sources = {src["name"]: (src["url"], src["type"]) for src in db.get_sources(1)}
@@ -201,7 +205,7 @@ def test_source_limit_applies_to_all_types(db, valid_feed):
     db.add_user(1)
     bot = main.NewsBot()
     reply(bot.process_add_source, 1, "A | https://a.example/rss", rss_context())
-    reply(bot.process_add_source, 1, "YT | https://rsshub.app/youtube/channel/UC1", rss_context())
+    reply(bot.process_add_source, 1, f"YT | {RSSHUB}/youtube/channel/UC1", rss_context())
 
     text = reply(bot.process_add_source, 1, "@examplechannel", telegram_context())
 
@@ -237,3 +241,4 @@ def test_channel_via_rsshub_url_is_same_telegram_source(db, valid_feed, monkeypa
         sources = session.query(database.NewsSource).all()
     assert [(s.url, s.type) for s in sources] == [("https://t.me/examplechannel", "telegram")]
     assert all(len(db.get_sources(uid)) == 1 for uid in (1, 2, 3))
+

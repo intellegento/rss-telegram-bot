@@ -45,12 +45,6 @@ def route_path(url: str) -> Optional[str]:
     return None
 
 
-async def fetch_telegram(url: str) -> List[Dict]:
-    """Опрашивает канал https://t.me/<имя> через маршрут RSSHub /telegram/channel/<имя>."""
-    name = url.rsplit("/", 1)[-1]
-    return await rss_handler.fetch(f"{config.RSSHUB_BASE_URL}/telegram/channel/{name}")
-
-
 async def fetch_route(path: str) -> List[Dict]:
     """Опрашивает маршрут RSSHub по пути, сохранённому в news_sources.url."""
     return await rss_handler.fetch(config.RSSHUB_BASE_URL + path)
