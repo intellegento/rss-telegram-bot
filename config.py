@@ -24,6 +24,9 @@ DEFAULT_UPDATE_INTERVAL = 300  # 5 минут
 MIN_UPDATE_INTERVAL = 60  # Минимальный интервал
 MAX_UPDATE_INTERVAL = 3600  # Максимальный интервал
 
+# Таймаут HTTP-запросов к источникам (в секундах)
+HTTP_TIMEOUT = 15
+
 # Максимальное количество ключевых слов на пользователя
 MAX_KEYWORDS_PER_USER = 10
 

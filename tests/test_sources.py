@@ -51,3 +51,21 @@ def test_binance_dates_are_utc_aware_and_sortable_with_rss():
     assert item["published"] == datetime(2025, 1, 1, 12, 0, tzinfo=timezone.utc)
     rss_items = asyncio.run(RSSHandler().parse_feed(FEED))
     sorted(rss_items + [item], key=lambda x: x["published"])
+
+
+def session_timeout(handler):
+    async def run():
+        await handler.init_session()
+        timeout = handler.session.timeout.total
+        await handler.close_session()
+        return timeout
+
+    return asyncio.run(run())
+
+
+def test_http_sessions_have_timeout():
+    from config import HTTP_TIMEOUT
+
+    assert HTTP_TIMEOUT > 0
+    assert session_timeout(RSSHandler()) == HTTP_TIMEOUT
+    assert session_timeout(BinanceHandler()) == HTTP_TIMEOUT

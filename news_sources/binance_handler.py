@@ -4,6 +4,8 @@ from typing import List, Dict, Optional
 from datetime import datetime, timezone
 import json
 
+from config import HTTP_TIMEOUT
+
 class BinanceHandler:
     def __init__(self, api_key: Optional[str] = None, api_secret: Optional[str] = None):
         self.api_key = api_key
@@ -13,7 +15,7 @@ class BinanceHandler:
 
     async def init_session(self):
         if not self.session:
-            self.session = aiohttp.ClientSession()
+            self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=HTTP_TIMEOUT))
 
     async def close_session(self):
         if self.session:

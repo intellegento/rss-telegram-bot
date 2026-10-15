@@ -6,13 +6,15 @@ import aiohttp
 import asyncio
 from bs4 import BeautifulSoup
 
+from config import HTTP_TIMEOUT
+
 class RSSHandler:
     def __init__(self):
         self.session = None
 
     async def init_session(self):
         if not self.session:
-            self.session = aiohttp.ClientSession()
+            self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=HTTP_TIMEOUT))
 
     async def close_session(self):
         if self.session:
