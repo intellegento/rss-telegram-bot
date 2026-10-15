@@ -27,8 +27,8 @@ MAX_UPDATE_INTERVAL = 3600  # Максимальный интервал
 # Таймаут HTTP-запросов к источникам (в секундах)
 HTTP_TIMEOUT = 15
 
-# Экземпляр RSSHub для Telegram-каналов и маршрутов RSSHub
-RSSHUB_BASE_URL = (os.getenv("RSSHUB_BASE_URL") or "https://rsshub.app").rstrip("/")
+# Экземпляр RSSHub для маршрутов RSSHub. Пусто — маршруты RSSHub отключены
+RSSHUB_BASE_URL = (os.getenv("RSSHUB_BASE_URL") or "").rstrip("/")
 
 # Минимальный интервал опроса одного источника по типу (в минутах)
 FETCH_INTERVAL_MINUTES = {

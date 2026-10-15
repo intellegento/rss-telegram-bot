@@ -66,8 +66,9 @@ def test_database_url_scheme_is_normalized_to_psycopg(monkeypatch, url):
 
 
 @pytest.mark.parametrize("value, expected", [
-    (None, "https://rsshub.app"),
-    ("", "https://rsshub.app"),
+    # Публичный rsshub.app не используется: без переменной маршруты RSSHub отключены
+    (None, ""),
+    ("", ""),
     ("https://rsshub.example.com/", "https://rsshub.example.com"),
 ])
 def test_rsshub_base_url(monkeypatch, value, expected):

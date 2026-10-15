@@ -40,11 +40,13 @@ def channel_url(name: str) -> str:
 def route_path(url: str) -> Optional[str]:
     """Путь маршрута, если url ведёт на RSSHub (свой экземпляр или публичный), иначе None."""
     for base in (config.RSSHUB_BASE_URL, PUBLIC_RSSHUB_URL):
-        if url.startswith(base + "/"):
+        if base and url.startswith(base + "/"):
             return url[len(base):]
     return None
 
 
 async def fetch_route(path: str) -> List[Dict]:
     """Опрашивает маршрут RSSHub по пути, сохранённому в news_sources.url."""
+    if not config.RSSHUB_BASE_URL:
+        raise RuntimeError("маршруты RSSHub отключены: не задан RSSHUB_BASE_URL")
     return await rss_handler.fetch(config.RSSHUB_BASE_URL + path)

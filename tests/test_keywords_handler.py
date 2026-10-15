@@ -242,3 +242,30 @@ def test_channel_via_rsshub_url_is_same_telegram_source(db, valid_feed, monkeypa
     assert [(s.url, s.type) for s in sources] == [("https://t.me/examplechannel", "telegram")]
     assert all(len(db.get_sources(uid)) == 1 for uid in (1, 2, 3))
 
+
+@pytest.mark.parametrize("url", ["https://rsshub.app/youtube/channel/UC1", f"{RSSHUB}/youtube/channel/UC1"])
+def test_rsshub_routes_are_disabled_without_base_url(db, valid_feed, monkeypatch, url):
+    monkeypatch.setattr("config.RSSHUB_BASE_URL", "")
+    db.add_user(1)
+    bot = main.NewsBot()
+
+    text = reply(bot.process_add_source, 1, f"YT | {url}", rss_context())
+
+    if url.startswith("https://rsshub.app"):
+        assert "RSSHub" in text and "отключен" in text
+        assert valid_feed.urls == []
+        assert db.get_sources(1) == []
+    else:
+        # Без настроенного RSSHub чужой экземпляр не распознаётся и считается обычным RSS
+        assert db.get_sources(1)[0]["type"] == "rss"
+
+
+def test_channel_via_rsshub_url_works_without_rsshub(db, valid_feed, monkeypatch):
+    monkeypatch.setattr("config.RSSHUB_BASE_URL", "")
+    db.add_user(1)
+    bot = main.NewsBot()
+
+    reply(bot.process_add_source, 1, "Канал | https://rsshub.app/telegram/channel/examplechannel", rss_context())
+
+    assert [(s["url"], s["type"]) for s in db.get_sources(1)] == [("https://t.me/examplechannel", "telegram")]
+    assert valid_feed.urls == ["https://t.me/s/examplechannel"]

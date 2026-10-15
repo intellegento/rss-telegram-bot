@@ -12,6 +12,7 @@ from telegram.ext import (
     ConversationHandler,
 )
 
+import config
 from config import (
     TELEGRAM_TOKEN,
     DEFAULT_RSS_SOURCES,
@@ -406,6 +407,12 @@ class NewsBot:
                 channel = path and route_channel_name(path)
                 if channel:
                     source_type, url, name = 'telegram', channel_url(channel), f"@{channel}"
+                elif path and not config.RSSHUB_BASE_URL:
+                    await update.message.reply_text(
+                        "❌ Маршруты RSSHub сейчас отключены: в боте не настроен свой экземпляр RSSHub "
+                        "(RSSHUB_BASE_URL).\nПришлите обычную RSS-ленту или нажмите 'Отмена'"
+                    )
+                    return ADDING_SOURCE
                 elif path:
                     source_type, url = 'rsshub', path
                 else:

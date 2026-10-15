@@ -99,6 +99,15 @@ def test_rsshub_route_detection(monkeypatch):
     assert rsshub.route_path("https://rsshub.app.evil.example/x") is None
 
 
+def test_rsshub_route_detection_without_base_url(monkeypatch):
+    monkeypatch.setattr("config.RSSHUB_BASE_URL", "")
+
+    # Адрес публичного RSSHub по-прежнему распознаётся, чтобы бот мог объяснить отказ
+    assert rsshub.route_path("https://rsshub.app/youtube/channel/UC1") == "/youtube/channel/UC1"
+    assert rsshub.route_path("https://a.example/rss") is None
+    assert rsshub.route_path("/youtube/channel/UC1") is None
+
+
 def test_route_feed_url_follows_rsshub_base_url(monkeypatch, fake_http):
     fake_http.body = VALID_RSS
 
@@ -110,6 +119,14 @@ def test_route_feed_url_follows_rsshub_base_url(monkeypatch, fake_http):
         "https://rsshub.example.com/youtube/channel/UC1",
         "https://rss.example.org/youtube/channel/UC1",
     ]
+
+
+def test_route_is_not_fetched_without_rsshub_base_url(monkeypatch, fake_http):
+    monkeypatch.setattr("config.RSSHUB_BASE_URL", "")
+
+    with pytest.raises(Exception, match="RSSHUB_BASE_URL"):
+        asyncio.run(rsshub.fetch_route("/youtube/channel/UC1"))
+    assert fake_http.urls == []
 
 
 def fetch_durov(fake_http):
