@@ -133,12 +133,11 @@ class NewsBot:
                 invalid_keywords.append(keyword)
                 continue
 
-            if keyword.lower() in [k.lower() for k in current_keywords]:
-                skipped_keywords.append(keyword)
-                continue
-
+            # Дубли отсекает UNIQUE в БД: add_keyword вернёт False
             if self.db.add_keyword(user_id, keyword):
                 added_keywords.append(keyword)
+            else:
+                skipped_keywords.append(keyword)
 
         # Формируем ответное сообщение
         response_parts = []

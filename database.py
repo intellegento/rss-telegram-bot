@@ -1,5 +1,6 @@
 from sqlalchemy import create_engine, Column, Integer, BigInteger, String, Boolean, ForeignKey, Table, DateTime, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql import func
@@ -94,10 +95,16 @@ class DatabaseManager:
         with self.Session() as session:
             user = session.query(User).filter_by(telegram_id=user_id).first()
             if user and len(user.keywords) < 10:
-                keyword_obj = Keyword(user_id=user.id, word=keyword.lower())
-                session.add(keyword_obj)
+                # Дубли отсекает UNIQUE(user_id, word)
+                result = session.execute(
+                    insert(Keyword)
+                    .values(user_id=user.id, word=keyword.lower())
+                    .on_conflict_do_nothing(index_elements=['user_id', 'word'])
+                    .returning(Keyword.id)
+                )
+                inserted = result.scalar() is not None
                 session.commit()
-                return True
+                return inserted
             return False
 
     def remove_keyword(self, user_id: int, keyword: str) -> bool:
@@ -125,8 +132,12 @@ class DatabaseManager:
         with self.Session() as session:
             user = session.query(User).filter_by(telegram_id=user_id).first()
             if user:
-                seen = SeenNews(user_id=user.id, news_hash=news_hash)
-                session.add(seen)
+                # Дубли отсекает UNIQUE(user_id, news_hash)
+                session.execute(
+                    insert(SeenNews)
+                    .values(user_id=user.id, news_hash=news_hash)
+                    .on_conflict_do_nothing(index_elements=['user_id', 'news_hash'])
+                )
                 session.commit()
 
     def is_news_seen(self, user_id: int, news_hash: str) -> bool:

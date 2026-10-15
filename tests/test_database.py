@@ -25,3 +25,24 @@ def test_large_telegram_id_is_stored_and_read(db):
 
     assert user is not None
     assert user.telegram_id == 7000000000
+
+
+def test_adding_same_keyword_twice_does_not_fail_or_duplicate(db):
+    db.add_user(1)
+
+    assert db.add_keyword(1, "bitcoin") is True
+    assert db.add_keyword(1, "Bitcoin") is False
+
+    assert db.get_keywords(1) == ["bitcoin"]
+
+
+def test_adding_same_seen_news_twice_does_not_fail_or_duplicate(db):
+    import database
+
+    db.add_user(1)
+    db.add_seen_news(1, "hash-1")
+    db.add_seen_news(1, "hash-1")
+
+    assert db.is_news_seen(1, "hash-1")
+    with db.Session() as session:
+        assert session.query(database.SeenNews).count() == 1
