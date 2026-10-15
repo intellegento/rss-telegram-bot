@@ -3,7 +3,6 @@ import hashlib
 from typing import List, Dict, Optional
 from datetime import datetime, timezone
 import aiohttp
-import asyncio
 from bs4 import BeautifulSoup
 
 from config import HTTP_TIMEOUT

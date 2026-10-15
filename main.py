@@ -1,9 +1,8 @@
 import asyncio
 import logging
-from typing import Dict, List
-from datetime import datetime, timedelta
+from typing import Dict
 
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     Application,
     CommandHandler,

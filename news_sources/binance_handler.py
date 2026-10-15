@@ -2,7 +2,6 @@ import aiohttp
 import hashlib
 from typing import List, Dict, Optional
 from datetime import datetime, timezone
-import json
 
 from config import HTTP_TIMEOUT
 
