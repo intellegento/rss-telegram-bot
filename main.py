@@ -576,9 +576,8 @@ class NewsBot:
                             # Проверяем, не отправляли ли мы эту новость ранее
                             if not self.db.is_news_seen(user.telegram_id, news['hash']):
                                 filtered_news.append(news)
-                                self.db.add_seen_news(user.telegram_id, news['hash'])
-                    
-                    # Отправляем новости пользователю
+
+                    # Отправляем новости пользователю; остальные придут в следующих циклах
                     for news in filtered_news[:10]:  # Ограничиваем количество новостей
                         try:
                             message = format_message(news)
@@ -588,6 +587,8 @@ class NewsBot:
                                 parse_mode='HTML',
                                 disable_web_page_preview=True
                             )
+                            # Помечаем как увиденную только после успешной отправки
+                            self.db.add_seen_news(user.telegram_id, news['hash'])
                             await asyncio.sleep(0.5)  # Небольшая задержка между сообщениями
                         except Exception as e:
                             logger.error(f"Ошибка при отправке новости пользователю {user.telegram_id}: {e}")
